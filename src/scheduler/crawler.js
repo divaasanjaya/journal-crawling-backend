@@ -6,7 +6,7 @@
  * job that will call `startScopusApi()` from the crawler service.
  */
 const cron = require('node-cron');
-const { startScopusApi } = require('../modules/crawler/crawler.service');
+const { startScopusApi, startScholarSelenium } = require('../modules/crawler/crawler.service');
 const { getDb } = require('../db');
 const fs = require('fs');
 const os = require('os');
@@ -88,11 +88,10 @@ function startScheduler() {
         return;
       }
 
-      // Spawn one job per year but reuse the same skip-file so deduplication
-      // is based on recorded data rather than presence of a year folder.
+      // Spawn one job per year for Scopus and one for Scholar (parallel automation)
       for (const y of yearsToCrawl) {
         try {
-          console.log(`Scheduler: starting job for year ${y}`);
+          console.log(`Scheduler: starting Scopus job for year ${y}`);
           startScopusApi({
             affil: AFFIL,
             startYear: y,
@@ -106,6 +105,18 @@ function startScheduler() {
         } catch (e) {
           console.error('Scheduler: failed to start scopus job for year', y, e && e.message ? e.message : e);
         }
+      }
+      // Scholar job: run once for all affiliation (no year in query)
+      try {
+        console.log(`Scheduler: starting Scholar job for affiliation only: ${AFFIL}`);
+        startScholarSelenium({
+          query: AFFIL,
+          count: COUNT,
+          mongoUri: MONGO_URI,
+          output: `output_scholar_all.json`
+        });
+      } catch (e) {
+        console.error('Scheduler: failed to start scholar job for affiliation', e && e.message ? e.message : e);
       }
     } catch (e) {
       console.error('Scheduler: unexpected error during cron job:', e && e.message ? e.message : e);
@@ -137,7 +148,8 @@ async function runOnceNow() {
     }
   }
 
-  return startScopusApi({
+  // Run both Scopus and Scholar jobs in parallel for immediate/manual run
+  startScopusApi({
     affil: AFFIL,
     startYear: START_YEAR,
     endYear: END_YEAR,
@@ -146,6 +158,13 @@ async function runOnceNow() {
     skipFile: skipFilePath,
     maxStart: MAX_START,
     start: START_INDEX
+  });
+  // Scholar job: run once for all affiliation (no year in query)
+  startScholarSelenium({
+    query: AFFIL,
+    count: COUNT,
+    mongoUri: MONGO_URI,
+    output: `output_scholar_all.json`
   });
 }
 
