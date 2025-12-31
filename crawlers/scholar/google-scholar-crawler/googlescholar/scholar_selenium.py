@@ -7,7 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import WebDriverException
 # MongoDB helper
-from mongo_helper import insert_articles
+from pymongo import MongoClient
 
 
 # --- CONFIG & CLI ARGS ---
@@ -41,6 +41,27 @@ chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x
 # Path to chromedriver (update if needed)
 driver = webdriver.Chrome(options=chrome_options)
 
+# DB
+MONGO_URI = 'mongodb://localhost:27017/'  # Ganti jika perlu
+DB_NAME = 'journal_crawling'  # Ganti jika perlu
+COLLECTION_NAME = 'journal'
+
+client = MongoClient(MONGO_URI)
+db = client[DB_NAME]
+col_journals = db[COLLECTION_NAME]
+
+def insert_articles(journal):
+        # Cek duplikasi berdasarkan title, doi, dan authors
+        query = {
+            "title": journal["title"],
+            "doi": journal.get("doi", ""),
+            "authors": journal.get("authors", [])
+        }
+        existing = col_journals.find_one(query)
+        if not existing:
+            col_journals.insert_one(journal)
+        else:
+            print(f"SKIP REDUNDAN: {journal['title']}")
 
 # --- CRAWL ---
 url = f"https://scholar.google.com/scholar?hl=en&q={QUERY.replace(' ', '+')}"
@@ -118,7 +139,7 @@ while len(results) < RESULTS_LIMIT:
                 if len(parts) > 2:
                     pub_name = parts[-1].strip()
             # Compose result in Scopus-like format
-            results.append({
+            journal = {
                 'title': title,
                 'publicationName': pub_name,
                 'publicationYear': pub_year,
@@ -131,7 +152,9 @@ while len(results) < RESULTS_LIMIT:
                 # Add more fields as needed, set to None or best-effort
                 'doi': None,
                 'eid': None
-            })
+            }
+            results.append(journal)
+            insert_articles(journal)
             if len(results) >= RESULTS_LIMIT:
                 break
         except Exception as e:
@@ -164,8 +187,3 @@ with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
     json.dump(results, f, ensure_ascii=False, indent=2)
 print(f"Saved {len(results)} results to {OUTPUT_FILE}")
 
-# --- INSERT TO MONGODB ---
-try:
-    insert_articles(results)
-except Exception as e:
-    print(f"[MongoDB] Insert failed: {e}")

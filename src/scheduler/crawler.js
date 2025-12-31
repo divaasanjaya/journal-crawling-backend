@@ -6,7 +6,7 @@
  * job that will call `startScopusApi()` from the crawler service.
  */
 const cron = require('node-cron');
-const { startScopusApi, startScholarSelenium } = require('../modules/crawler/crawler.service');
+const { startScopusApi, startScholarSelenium, startSintaScrap, startSintaDosen } = require('../modules/crawler/crawler.service');
 const { getDb } = require('../db');
 const fs = require('fs');
 const os = require('os');
@@ -16,13 +16,14 @@ const path = require('path');
 // Affiliation to search for
 const AFFIL = 'Telkom University';
 // Publication years (inclusive)
-const START_YEAR = 2019;
-const END_YEAR = 2019;
+const START_YEAR = 2024;
+const END_YEAR = 2024;
 // How many results per automated run (pass as --count to runner)
 const COUNT = 20;
+const countScholar = 100; // for scholar
 // Cron expression: default is daily at 22:59 (minute hour ...)
 // You can override with environment variable SCHED_CRON (standard cron format)
-const DEFAULT_CRON = '0 0 * * *';
+const DEFAULT_CRON = '52 02 * * *';
 let CRON_EXPR = process.env.SCHED_CRON || DEFAULT_CRON;
 // If user accidentally provided swapped minute/hour like '22 59 * * *', try to auto-correct
 try {
@@ -44,8 +45,11 @@ const CRON_TZ = process.env.SCHED_TZ || 'Asia/Jakarta';
 // Mongo URI to pass to the spawned runner (optional override)
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/journal_crawling';
 // Optional: batasi start dan mulai dari start tertentu
-const MAX_START = 100;
-const START_INDEX = 0;
+const MAX_START = 1100;
+const START_INDEX = 1000;
+// SINTA scraping page range
+const SINTA_PAGE_START = 39;
+const SINTA_PAGE_END = 40;
 // -------------------------------------------------------------------------
 
 function startScheduler() {
@@ -111,12 +115,32 @@ function startScheduler() {
         console.log(`Scheduler: starting Scholar job for affiliation only: ${AFFIL}`);
         startScholarSelenium({
           query: AFFIL,
-          count: COUNT,
+          count: countScholar,
           mongoUri: MONGO_URI,
           output: `output_scholar_all.json`
         });
       } catch (e) {
         console.error('Scheduler: failed to start scholar job for affiliation', e && e.message ? e.message : e);
+      }
+      // Sinta job: run once for the configured page range
+      try {
+        console.log(`Scheduler: starting Sinta job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
+        startSintaScrap({
+          pageStart: SINTA_PAGE_START,
+          pageEnd: SINTA_PAGE_END
+        });
+      } catch (e) {
+        console.error('Scheduler: failed to start sinta job', e && e.message ? e.message : e);
+      }
+      // Sinta Dosen job: run once for the configured page range
+      try {
+        console.log(`Scheduler: starting Sinta Dosen job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
+        startSintaDosen({
+          pageStart: SINTA_PAGE_START,
+          pageEnd: SINTA_PAGE_END
+        });
+      } catch (e) {
+        console.error('Scheduler: failed to start sinta dosen job', e && e.message ? e.message : e);
       }
     } catch (e) {
       console.error('Scheduler: unexpected error during cron job:', e && e.message ? e.message : e);
