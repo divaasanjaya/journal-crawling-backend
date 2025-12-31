@@ -250,7 +250,63 @@ function startSintaScrap({ pageStart, pageEnd }) {
             delete jobSubscribers[id];
         }
     });
+
+    
     return jobs[id];
 }
 
-module.exports = { runScopus, startScopusApi, startScholarSelenium, startSintaScrap, getJob, subscribeJob, unsubscribeJob };
+// --- SINTA Dosen Scrap Automation ---
+function startSintaDosen({ pageStart, pageEnd }) {
+    const id = `sinta-dosen-job-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+    jobs[id] = { id, status: 'running', startedAt: new Date().toISOString(), stdout: '', stderr: '' };
+    persistJobToDb(jobs[id]).catch(() => {});
+
+    const script = path.resolve(__dirname, '../../../crawlers/sinta/sinta-scrap/scrap-google-scholar-dosen.py');
+    const args = [script, String(pageStart), String(pageEnd)];
+
+    console.log(`SINTA DOSEN JOB: spawning process: python ${args.join(' ')}`);
+    const proc = spawn('python', args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+    console.log(`SINTA DOSEN JOB: spawned pid=${proc.pid} for job ${id}`);
+
+    proc.stdout.on('data', d => {
+        const txt = d.toString();
+        jobs[id].stdout += txt;
+        console.log(`SINTA DOSEN JOB:${id}:stdout: ${txt.replace(/\n/g, '\\n')}`);
+        broadcastToJob(id, JSON.stringify({ stream: 'stdout', text: txt }));
+    });
+    proc.stderr.on('data', d => {
+        const txt = d.toString();
+        jobs[id].stderr += txt;
+        console.error(`SINTA DOSEN JOB:${id}:stderr: ${txt.replace(/\n/g, '\\n')}`);
+        broadcastToJob(id, JSON.stringify({ stream: 'stderr', text: txt }), 'stderr');
+    });
+
+    proc.on('close', async code => {
+        jobs[id].status = code === 0 ? 'finished' : 'failed';
+        jobs[id].exitCode = code;
+        jobs[id].finishedAt = new Date().toISOString();
+        await persistJobToDb(jobs[id]);
+        console.log(`SINTA DOSEN JOB:${id} finished status=${jobs[id].status} exit=${code}`);
+        broadcastToJob(id, JSON.stringify({ event: 'finished', exitCode: jobs[id].exitCode }), 'finished');
+        if (jobSubscribers[id]) {
+            for (const res of Array.from(jobSubscribers[id])) unsubscribeJob(id, res);
+            delete jobSubscribers[id];
+        }
+    });
+    proc.on('error', async err => {
+        jobs[id].status = 'failed';
+        jobs[id].stderr += err.message;
+        jobs[id].finishedAt = new Date().toISOString();
+        await persistJobToDb(jobs[id]);
+        broadcastToJob(id, JSON.stringify({ event: 'error', message: err.message }), 'error');
+        if (jobSubscribers[id]) {
+            for (const res of Array.from(jobSubscribers[id])) unsubscribeJob(id, res);
+            delete jobSubscribers[id];
+        }
+    });
+
+    
+    return jobs[id];
+}
+
+module.exports = { runScopus, startScopusApi, startScholarSelenium, startSintaScrap, startSintaDosen ,getJob, subscribeJob, unsubscribeJob };
