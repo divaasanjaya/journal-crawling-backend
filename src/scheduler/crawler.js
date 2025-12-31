@@ -6,7 +6,7 @@
  * job that will call `startScopusApi()` from the crawler service.
  */
 const cron = require('node-cron');
-const { startScopusApi, startScholarSelenium } = require('../modules/crawler/crawler.service');
+const { startScopusApi, startScholarSelenium, startSintaScrap } = require('../modules/crawler/crawler.service');
 const { getDb } = require('../db');
 const fs = require('fs');
 const os = require('os');
@@ -46,6 +46,9 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/journal_cr
 // Optional: batasi start dan mulai dari start tertentu
 const MAX_START = 100;
 const START_INDEX = 0;
+// SINTA scraping page range
+const SINTA_PAGE_START = 30;
+const SINTA_PAGE_END = 32;
 // -------------------------------------------------------------------------
 
 function startScheduler() {
@@ -117,6 +120,16 @@ function startScheduler() {
         });
       } catch (e) {
         console.error('Scheduler: failed to start scholar job for affiliation', e && e.message ? e.message : e);
+      }
+      // Sinta job: run once for the configured page range
+      try {
+        console.log(`Scheduler: starting Sinta job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
+        startSintaScrap({
+          pageStart: SINTA_PAGE_START,
+          pageEnd: SINTA_PAGE_END
+        });
+      } catch (e) {
+        console.error('Scheduler: failed to start sinta job', e && e.message ? e.message : e);
       }
     } catch (e) {
       console.error('Scheduler: unexpected error during cron job:', e && e.message ? e.message : e);

@@ -110,7 +110,7 @@ function startScopusApi({ affil, startYear, endYear, count, all, mongoUri, skipF
     // persist initial job (DB connection should be initialized in server)
     persistJobToDb(jobs[id]).catch(() => {});
 
-    console.log(`JOB: created ${id} affil=${affil} years=${startYear || ''}-${endYear || ''} all=${!!all} count=${count || ''}`);
+    console.log(`SCOPUS JOB: created ${id} affil=${affil} years=${startYear || ''}-${endYear || ''} all=${!!all} count=${count || ''}`);
 
     const script = path.resolve(__dirname, "../../../crawlers/scopus_api/run.js");
     const args = [script];
@@ -124,23 +124,23 @@ function startScopusApi({ affil, startYear, endYear, count, all, mongoUri, skipF
     if (typeof maxStart !== 'undefined') args.push(`--maxStart=${maxStart}`);
     if (typeof start !== 'undefined') args.push(`--start=${start}`);
 
-    console.log(`JOB: spawning process: ${process.execPath} ${args.join(' ')}`);
+    console.log(`SCOPUS JOB: spawning process: ${process.execPath} ${args.join(' ')}`);
     const proc = spawn(process.execPath, args, { windowsHide: true });
 
-    console.log(`JOB: spawned pid=${proc.pid} for job ${id}`);
+    console.log(`SCOPUS JOB: spawned pid=${proc.pid} for job ${id}`);
 
     proc.stdout.on('data', d => {
         const txt = d.toString();
         jobs[id].stdout += txt;
         // also log to server console
-        console.log(`JOB:${id}:stdout: ${txt.replace(/\n/g, '\\n')}`);
+        console.log(`SCOPUS JOB:${id}:stdout: ${txt.replace(/\n/g, '\\n')}`);
         // stream to subscribers
         broadcastToJob(id, JSON.stringify({ stream: 'stdout', text: txt }));
     });
     proc.stderr.on('data', d => {
         const txt = d.toString();
         jobs[id].stderr += txt;
-        console.error(`JOB:${id}:stderr: ${txt.replace(/\n/g, '\\n')}`);
+        console.error(`SCOPUS JOB:${id}:stderr: ${txt.replace(/\n/g, '\\n')}`);
         broadcastToJob(id, JSON.stringify({ stream: 'stderr', text: txt }), 'stderr');
     });
 
@@ -163,7 +163,7 @@ function startScopusApi({ affil, startYear, endYear, count, all, mongoUri, skipF
             jobs[id].result = { error: 'no-json' };
         }
         await persistJobToDb(jobs[id]);
-        console.log(`JOB:${id} finished status=${jobs[id].status} exit=${code}`);
+        console.log(`SCOPUS JOB:${id} finished status=${jobs[id].status} exit=${code}`);
         // notify subscribers job finished
         broadcastToJob(id, JSON.stringify({ event: 'finished', exitCode: jobs[id].exitCode }), 'finished');
         // close all subscribers
@@ -201,4 +201,56 @@ async function getJob(id) {
     }
 }
 
-module.exports = { runScopus, startScopusApi, startScholarSelenium, getJob, subscribeJob, unsubscribeJob };
+// --- SINTA Scrap Automation ---
+function startSintaScrap({ pageStart, pageEnd }) {
+    const id = `sinta-job-${Date.now()}-${Math.floor(Math.random()*10000)}`;
+    jobs[id] = { id, status: 'running', startedAt: new Date().toISOString(), stdout: '', stderr: '' };
+    persistJobToDb(jobs[id]).catch(() => {});
+
+    const script = path.resolve(__dirname, '../../../crawlers/sinta/sinta-scrap/scrap-google-scholar-specific.py');
+    const args = [script, String(pageStart), String(pageEnd)];
+
+    console.log(`SINTA JOB: spawning process: python ${args.join(' ')}`);
+    const proc = spawn('python', args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+    console.log(`SINTA JOB: spawned pid=${proc.pid} for job ${id}`);
+
+    proc.stdout.on('data', d => {
+        const txt = d.toString();
+        jobs[id].stdout += txt;
+        console.log(`SINTA JOB:${id}:stdout: ${txt.replace(/\n/g, '\\n')}`);
+        broadcastToJob(id, JSON.stringify({ stream: 'stdout', text: txt }));
+    });
+    proc.stderr.on('data', d => {
+        const txt = d.toString();
+        jobs[id].stderr += txt;
+        console.error(`SINTA JOB:${id}:stderr: ${txt.replace(/\n/g, '\\n')}`);
+        broadcastToJob(id, JSON.stringify({ stream: 'stderr', text: txt }), 'stderr');
+    });
+
+    proc.on('close', async code => {
+        jobs[id].status = code === 0 ? 'finished' : 'failed';
+        jobs[id].exitCode = code;
+        jobs[id].finishedAt = new Date().toISOString();
+        await persistJobToDb(jobs[id]);
+        console.log(`SINTA JOB:${id} finished status=${jobs[id].status} exit=${code}`);
+        broadcastToJob(id, JSON.stringify({ event: 'finished', exitCode: jobs[id].exitCode }), 'finished');
+        if (jobSubscribers[id]) {
+            for (const res of Array.from(jobSubscribers[id])) unsubscribeJob(id, res);
+            delete jobSubscribers[id];
+        }
+    });
+    proc.on('error', async err => {
+        jobs[id].status = 'failed';
+        jobs[id].stderr += err.message;
+        jobs[id].finishedAt = new Date().toISOString();
+        await persistJobToDb(jobs[id]);
+        broadcastToJob(id, JSON.stringify({ event: 'error', message: err.message }), 'error');
+        if (jobSubscribers[id]) {
+            for (const res of Array.from(jobSubscribers[id])) unsubscribeJob(id, res);
+            delete jobSubscribers[id];
+        }
+    });
+    return jobs[id];
+}
+
+module.exports = { runScopus, startScopusApi, startScholarSelenium, startSintaScrap, getJob, subscribeJob, unsubscribeJob };
