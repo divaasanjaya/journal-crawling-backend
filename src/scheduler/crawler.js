@@ -5,8 +5,10 @@
  * defaults. This module exposes `startScheduler()` which registers a cron
  * job that will call `startScopusApi()` from the crawler service.
  */
+require('dotenv').config();
 const cron = require('node-cron');
 const { startScopusApi, startScholarSelenium, startSintaScrap, startSintaDosen } = require('../modules/crawler/crawler.service');
+const { exportToSpreadsheet } = require('../app/exportToSpreadsheet');
 const { getDb } = require('../db');
 const fs = require('fs');
 const os = require('os');
@@ -23,7 +25,7 @@ const COUNT = 20;
 const countScholar = 100; // for scholar
 // Cron expression: default is daily at 22:59 (minute hour ...)
 // You can override with environment variable SCHED_CRON (standard cron format)
-const DEFAULT_CRON = '52 02 * * *';
+const DEFAULT_CRON = '51 01 * * *';
 let CRON_EXPR = process.env.SCHED_CRON || DEFAULT_CRON;
 // If user accidentally provided swapped minute/hour like '22 59 * * *', try to auto-correct
 try {
@@ -142,6 +144,31 @@ function startScheduler() {
       } catch (e) {
         console.error('Scheduler: failed to start sinta dosen job', e && e.message ? e.message : e);
       }
+
+      // Export to Google Sheets after all crawling jobs are started
+      try {
+        console.log('Scheduler: starting Google Sheets export job');
+        const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+        if (spreadsheetId) {
+          // Run export asynchronously to not block the scheduler
+          setTimeout(async () => {
+            try {
+              const result = await exportToSpreadsheet(spreadsheetId);
+              if (result.success) {
+                console.log('Scheduler: Google Sheets export completed successfully');
+              } else {
+                console.error('Scheduler: Google Sheets export failed:', result.message);
+              }
+            } catch (e) {
+              console.error('Scheduler: unexpected error during Google Sheets export:', e && e.message ? e.message : e);
+            }
+          }, 10); // Small delay to ensure crawling jobs have started
+        } else {
+          console.warn('Scheduler: GOOGLE_SPREADSHEET_ID not configured, skipping Google Sheets export');
+        }
+      } catch (e) {
+        console.error('Scheduler: failed to start Google Sheets export job', e && e.message ? e.message : e);
+      }
     } catch (e) {
       console.error('Scheduler: unexpected error during cron job:', e && e.message ? e.message : e);
     }
@@ -190,6 +217,52 @@ async function runOnceNow() {
     mongoUri: MONGO_URI,
     output: `output_scholar_all.json`
   });
+
+  // Sinta job: run once for the configured page range
+  try {
+    console.log(`Scheduler: starting Sinta job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
+    startSintaScrap({
+      pageStart: SINTA_PAGE_START,
+      pageEnd: SINTA_PAGE_END
+    });
+  } catch (e) {
+    console.error('Scheduler: failed to start sinta job', e && e.message ? e.message : e);
+  }
+  // Sinta Dosen job: run once for the configured page range
+  try {
+    console.log(`Scheduler: starting Sinta Dosen job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
+    startSintaDosen({
+      pageStart: SINTA_PAGE_START,
+      pageEnd: SINTA_PAGE_END
+    });
+  } catch (e) {
+    console.error('Scheduler: failed to start sinta dosen job', e && e.message ? e.message : e);
+  }
+
+  // Export to Google Sheets after manual run
+  try {
+    console.log('Scheduler: starting Google Sheets export job for manual run');
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    if (spreadsheetId) {
+      // Run export asynchronously to not block the scheduler
+      setTimeout(async () => {
+        try {
+          const result = await exportToSpreadsheet(spreadsheetId);
+          if (result.success) {
+            console.log('Scheduler: Google Sheets export completed successfully');
+          } else {
+            console.error('Scheduler: Google Sheets export failed:', result.message);
+          }
+        } catch (e) {
+          console.error('Scheduler: unexpected error during Google Sheets export:', e && e.message ? e.message : e);
+        }
+      }, 1000); // Small delay to ensure crawling jobs have started
+    } else {
+      console.warn('Scheduler: GOOGLE_SPREADSHEET_ID not configured, skipping Google Sheets export');
+    }
+  } catch (e) {
+    console.error('Scheduler: failed to start Google Sheets export job for manual run', e && e.message ? e.message : e);
+  }
 }
 
 module.exports = { startScheduler, runOnceNow };
