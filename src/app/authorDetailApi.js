@@ -25,17 +25,16 @@ async function authorDetailApi(fastify, opts) {
         return reply.code(404).send({ error: 'Author not found' });
       }
 
+      const totalCitation = dosen.citation_gscholar + dosen.citation_scopus + dosen.citation_wos;
+      const totalArticle = dosen.article_gscholar + dosen.article_scopus + dosen.article_wos;
+
       // Return the specified fields
       reply.code(200).send({
         nama: titleCase(dosen.nama),
         affiliation: dosen.affiliation,
         department: dosen.department,
-        article_scopus: dosen.article_scopus,
-        article_gscholar: dosen.article_gscholar,
-        article_wos: dosen.article_wos,
-        citation_scopus: dosen.citation_scopus,
-        citation_gscholar: dosen.citation_gscholar,
-        citation_wos: dosen.citation_wos,
+        article: totalArticle,
+        citation: totalCitation,
         hindex_scopus: dosen.hindex_scopus,
         hindex_gscholar: dosen.hindex_gscholar,
         hindex_wos: dosen.hindex_wos
