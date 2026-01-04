@@ -25,7 +25,7 @@ const COUNT = 20;
 const countScholar = 100; // for scholar
 // Cron expression: default is daily at 22:59 (minute hour ...)
 // You can override with environment variable SCHED_CRON (standard cron format)
-const DEFAULT_CRON = '51 01 * * *';
+const DEFAULT_CRON = '0 0 * * *';
 let CRON_EXPR = process.env.SCHED_CRON || DEFAULT_CRON;
 // If user accidentally provided swapped minute/hour like '22 59 * * *', try to auto-correct
 try {
@@ -148,26 +148,32 @@ function startScheduler() {
       // Export to Google Sheets after all crawling jobs are started
       try {
         console.log('Scheduler: starting Google Sheets export job');
+
         const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-        if (spreadsheetId) {
-          // Run export asynchronously to not block the scheduler
-          setTimeout(async () => {
-            try {
-              const result = await exportToSpreadsheet(spreadsheetId);
-              if (result.success) {
-                console.log('Scheduler: Google Sheets export completed successfully');
-              } else {
-                console.error('Scheduler: Google Sheets export failed:', result.message);
-              }
-            } catch (e) {
-              console.error('Scheduler: unexpected error during Google Sheets export:', e && e.message ? e.message : e);
-            }
-          }, 10); // Small delay to ensure crawling jobs have started
+
+        if (!spreadsheetId) {
+          console.warn(
+            'Scheduler: GOOGLE_SPREADSHEET_ID not configured, skipping Google Sheets export'
+          );
+          return;
+        }
+
+        // 🔒 Sinkron: tunggu export selesai (TIDAK overlap)
+        const result = await exportToSpreadsheet(spreadsheetId);
+
+        if (result && result.success) {
+          console.log('Scheduler: Google Sheets export completed successfully');
         } else {
-          console.warn('Scheduler: GOOGLE_SPREADSHEET_ID not configured, skipping Google Sheets export');
+          console.error(
+            'Scheduler: Google Sheets export failed:',
+            result?.message || 'Unknown error'
+          );
         }
       } catch (e) {
-        console.error('Scheduler: failed to start Google Sheets export job', e && e.message ? e.message : e);
+        console.error(
+          'Scheduler: unexpected error during Google Sheets export:',
+          e?.message || e
+        );
       }
     } catch (e) {
       console.error('Scheduler: unexpected error during cron job:', e && e.message ? e.message : e);
@@ -175,94 +181,4 @@ function startScheduler() {
   }, { scheduled: true, timezone: CRON_TZ });
 }
 
-async function runOnceNow() {
-  console.log('Scheduler: running a single immediate job');
-  let db = null;
-  try { db = getDb(); } catch (e) { db = null; }
-
-  let skipFilePath = null;
-  if (db) {
-    try {
-      const existing = await db.collection('journal').find({ affiliations: { $in: [ new RegExp(AFFIL, 'i') ] } }).project({ eid: 1, doi: 1, title: 1 }).toArray();
-      const eids = existing.map(r => r.eid).filter(Boolean);
-      const dois = existing.map(r => r.doi).filter(Boolean);
-      const titles = existing.map(r => (r.title || '').toLowerCase());
-      const payload = { eids, dois, titles };
-      const tmp = os.tmpdir();
-      const fname = `journal_skip_${Date.now()}.json`;
-      skipFilePath = path.join(tmp, fname);
-      fs.writeFileSync(skipFilePath, JSON.stringify(payload), 'utf8');
-      console.log(`Scheduler: wrote skip file ${skipFilePath} (eids=${eids.length}, dois=${dois.length}, titles=${titles.length})`);
-    } catch (e) {
-      console.warn('Scheduler: failed to build skip file for runOnceNow, proceeding without it:', e && e.message ? e.message : e);
-      skipFilePath = null;
-    }
-  }
-
-  // Run both Scopus and Scholar jobs in parallel for immediate/manual run
-  startScopusApi({
-    affil: AFFIL,
-    startYear: START_YEAR,
-    endYear: END_YEAR,
-    count: COUNT,
-    mongoUri: MONGO_URI,
-    skipFile: skipFilePath,
-    maxStart: MAX_START,
-    start: START_INDEX
-  });
-  // Scholar job: run once for all affiliation (no year in query)
-  startScholarSelenium({
-    query: AFFIL,
-    count: COUNT,
-    mongoUri: MONGO_URI,
-    output: `output_scholar_all.json`
-  });
-
-  // Sinta job: run once for the configured page range
-  try {
-    console.log(`Scheduler: starting Sinta job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
-    startSintaScrap({
-      pageStart: SINTA_PAGE_START,
-      pageEnd: SINTA_PAGE_END
-    });
-  } catch (e) {
-    console.error('Scheduler: failed to start sinta job', e && e.message ? e.message : e);
-  }
-  // Sinta Dosen job: run once for the configured page range
-  try {
-    console.log(`Scheduler: starting Sinta Dosen job for pages ${SINTA_PAGE_START}-${SINTA_PAGE_END}`);
-    startSintaDosen({
-      pageStart: SINTA_PAGE_START,
-      pageEnd: SINTA_PAGE_END
-    });
-  } catch (e) {
-    console.error('Scheduler: failed to start sinta dosen job', e && e.message ? e.message : e);
-  }
-
-  // Export to Google Sheets after manual run
-  try {
-    console.log('Scheduler: starting Google Sheets export job for manual run');
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    if (spreadsheetId) {
-      // Run export asynchronously to not block the scheduler
-      setTimeout(async () => {
-        try {
-          const result = await exportToSpreadsheet(spreadsheetId);
-          if (result.success) {
-            console.log('Scheduler: Google Sheets export completed successfully');
-          } else {
-            console.error('Scheduler: Google Sheets export failed:', result.message);
-          }
-        } catch (e) {
-          console.error('Scheduler: unexpected error during Google Sheets export:', e && e.message ? e.message : e);
-        }
-      }, 1000); // Small delay to ensure crawling jobs have started
-    } else {
-      console.warn('Scheduler: GOOGLE_SPREADSHEET_ID not configured, skipping Google Sheets export');
-    }
-  } catch (e) {
-    console.error('Scheduler: failed to start Google Sheets export job for manual run', e && e.message ? e.message : e);
-  }
-}
-
-module.exports = { startScheduler, runOnceNow };
+module.exports = { startScheduler};
