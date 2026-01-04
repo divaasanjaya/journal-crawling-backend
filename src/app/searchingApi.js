@@ -4,7 +4,7 @@ const { isAuthorMatch } = require('../utils/authorMatcher');
 async function searchingApi(fastify, opts) {
   // API endpoint to perform semantic search using NLP model via Flask
   fastify.get('/search', async (request, reply) => {
-    const { q: query, top_k = 100, author } = request.query;
+    const { q: query, top_k = 100, author, yearFrom, yearTo } = request.query;
 
     if (!query) {
       return reply.code(400).send({ error: 'Query parameter "q" is required' });
@@ -23,6 +23,13 @@ async function searchingApi(fastify, opts) {
           Array.isArray(item.authors) &&
           item.authors.some(a => isAuthorMatch(author, a))
         );
+      }
+
+      if (yearFrom && yearTo) {
+        results = results.filter(item => {
+          const pubYear = parseInt(item.year, 10);
+          return pubYear >= parseInt(yearFrom, 10) && pubYear <= parseInt(yearTo, 10);
+        });
       }
 
       reply.code(200).send(results);
