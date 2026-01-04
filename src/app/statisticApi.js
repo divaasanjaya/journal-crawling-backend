@@ -1,4 +1,6 @@
 const { getDb } = require('../db');
+const { spawn } = require('child_process');
+const path = require('path');
 
 async function publicationYearApi(fastify, opts) {
   // API endpoint to get publication count per year
@@ -83,4 +85,33 @@ async function citationYearApi(fastify, opts) {
   });
 }
 
-module.exports = { publicationYearApi, citationYearApi };
+async function topicsApi(fastify, opts) {
+  // API endpoint to get top 5 topics
+  fastify.get('/statistic/topics', async (request, reply) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const topicsPath = path.join(__dirname, '../../', 'models', 'top_topics.json');
+      const topicsData = fs.readFileSync(topicsPath, 'utf8');
+      const topics = JSON.parse(topicsData);
+
+      const results = topics.slice(0, 5).map(topic => ({
+        topic: topic.topic_name,
+        count: topic.count
+      }));
+
+      reply.code(200).send({
+        success: true,
+        data: results
+      });
+    } catch (error) {
+      fastify.log.error('Error fetching topics:', error);
+      reply.code(500).send({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  });
+}
+
+module.exports = { publicationYearApi, citationYearApi, topicsApi };
