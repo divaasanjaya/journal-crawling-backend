@@ -1,0 +1,9 @@
+pandas
+numpy
+sentence-transformers
+faiss-cpu
+bertopic
+keybert
+umap-learn
+pymongo
+scikit-learn
