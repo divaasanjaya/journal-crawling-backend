@@ -1,16 +1,15 @@
 const { getDb } = require('../db');
-const { spawn } = require('child_process');
 const path = require('path');
 
-async function publicationYearApi(fastify, opts) {
-  // API endpoint to get publication count per year
-  fastify.get('/statistic/publications-per-year', async (request, reply) => {
+async function statisticApi(fastify, opts) {
+  // Single API endpoint to get all statistics: publications per year, citations per year, and top topics
+  fastify.get('/statistic', async (request, reply) => {
     try {
       const db = getDb();
       const collection = db.collection('journal');
 
-      // Aggregate to count publications by publicationYear
-      const pipeline = [
+      // Aggregate for publications per year
+      const pubPipeline = [
         {
           $match: {
             publicationYear: { $exists: true, $ne: null, $ne: '' }
@@ -26,32 +25,14 @@ async function publicationYearApi(fastify, opts) {
           $sort: { _id: 1 }
         }
       ];
-
-      const results = await collection.aggregate(pipeline).toArray();
-
-      // Convert results to the desired format
+      const pubResults = await collection.aggregate(pubPipeline).toArray();
       const publicationsPerYear = {};
-      results.forEach(result => {
+      pubResults.forEach(result => {
         publicationsPerYear[result._id] = result.count;
       });
 
-      reply.code(200).send(publicationsPerYear);
-    } catch (error) {
-      fastify.log.error('Error fetching publications per year:', error);
-      reply.code(500).send({ error: 'Internal server error' });
-    }
-  });
-}
-
-async function citationYearApi(fastify, opts) {
-  // API endpoint to get total citations per year
-  fastify.get('/statistic/citations-per-year', async (request, reply) => {
-    try {
-      const db = getDb();
-      const collection = db.collection('journal');
-
-      // Aggregate to sum citations by publicationYear
-      const pipeline = [
+      // Aggregate for citations per year
+      const citPipeline = [
         {
           $match: {
             publicationYear: { $exists: true, $ne: null, $ne: '' },
@@ -68,50 +49,33 @@ async function citationYearApi(fastify, opts) {
           $sort: { _id: 1 }
         }
       ];
-
-      const results = await collection.aggregate(pipeline).toArray();
-
-      // Convert results to the desired format
+      const citResults = await collection.aggregate(citPipeline).toArray();
       const citationsPerYear = {};
-      results.forEach(result => {
+      citResults.forEach(result => {
         citationsPerYear[result._id] = result.totalCitations;
       });
 
-      reply.code(200).send(citationsPerYear);
-    } catch (error) {
-      fastify.log.error('Error fetching citations per year:', error);
-      reply.code(500).send({ error: 'Internal server error' });
-    }
-  });
-}
-
-async function topicsApi(fastify, opts) {
-  // API endpoint to get top 5 topics
-  fastify.get('/statistic/topics', async (request, reply) => {
-    try {
+      // Get top topics
       const fs = require('fs');
-      const path = require('path');
       const topicsPath = path.join(__dirname, '../../', 'models', 'top_topics.json');
       const topicsData = fs.readFileSync(topicsPath, 'utf8');
       const topics = JSON.parse(topicsData);
-
-      const results = topics.slice(0, 5).map(topic => ({
+      const topTopics = topics.slice(0, 5).map(topic => ({
         topic: topic.topic_name,
         count: topic.count
       }));
 
       reply.code(200).send({
-        success: true,
-        data: results
+        status: true,
+        publicationsPerYear,
+        citationsPerYear,
+        topTopics
       });
     } catch (error) {
-      fastify.log.error('Error fetching topics:', error);
-      reply.code(500).send({
-        success: false,
-        error: 'Internal server error'
-      });
+      fastify.log.error('Error fetching statistics:', error);
+      reply.code(500).send({ error: 'Internal server error' });
     }
   });
 }
 
-module.exports = { publicationYearApi, citationYearApi, topicsApi };
+module.exports = { statisticApi };
