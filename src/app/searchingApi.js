@@ -1,64 +1,41 @@
-const { spawn } = require('child_process');
-const path = require('path');
+const axios = require('axios');
+const { isAuthorMatch } = require('../utils/authorMatcher');
 
 async function searchingApi(fastify, opts) {
-  // API endpoint to perform semantic search using NLP model
+  // API endpoint to perform semantic search using NLP model via Flask
   fastify.get('/search', async (request, reply) => {
-    const { q: query, top_k = 100 } = request.query;
+    const { q: query, top_k = 100, author, yearFrom, yearTo } = request.query;
 
     if (!query) {
       return reply.code(400).send({ error: 'Query parameter "q" is required' });
     }
 
     try {
-      // Path to the Python script
-      const scriptPath = path.join(__dirname, '../ai/search_journals.py');
+      // Call Flask API
+      const flaskUrl = `http://localhost:5000/search?q=${encodeURIComponent(query)}&top_k=${top_k}`;
+      const response = await axios.get(flaskUrl);
 
-      // Spawn Python process
-      const pythonProcess = spawn('python', [scriptPath, query, top_k.toString()], {
-        cwd: path.join(__dirname, '../..'),
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+      let results = response.data;
 
-      let stdout = '';
-      let stderr = '';
+      // 🔥 FILTER AUTHOR (jika ada)
+      if (author) {
+        results = results.filter(item =>
+          Array.isArray(item.authors) &&
+          item.authors.some(a => isAuthorMatch(author, a))
+        );
+      }
 
-      pythonProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      pythonProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      return new Promise((resolve, reject) => {
-        pythonProcess.on('close', (code) => {
-          if (code !== 0) {
-            fastify.log.error('Python script error:', stderr);
-            reply.code(500).send({ error: 'Search failed', details: stderr });
-            return resolve();
-          }
-
-          try {
-            console.log('Hasil stdout:', stdout);
-            const results = JSON.parse(stdout);
-            resolve(reply.code(200).send(results));
-          } catch (parseError) {
-            fastify.log.error('JSON parse error:', parseError);
-            reply.code(500).send({ error: 'Invalid response format' });
-            resolve();
-          }
+      if (yearFrom && yearTo) {
+        results = results.filter(item => {
+          const pubYear = parseInt(item.year, 10);
+          return pubYear >= parseInt(yearFrom, 10) && pubYear <= parseInt(yearTo, 10);
         });
+      }
 
-        pythonProcess.on('error', (error) => {
-          fastify.log.error('Process error:', error);
-          reply.code(500).send({ error: 'Search process failed' });
-          resolve();
-        });
-      });
+      reply.code(200).send(results);
     } catch (error) {
-      fastify.log.error('Search error:', error);
-      reply.code(500).send({ error: 'Internal server error' });
+      fastify.log.error('Flask API error:', error.message);
+      reply.code(500).send({ error: 'Search failed', details: error.message });
     }
   });
 }
