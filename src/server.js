@@ -1,3 +1,5 @@
+const { spawn } = require('child_process');
+const path = require('path');
 const fastify = require("fastify")({ logger: true });
 const crawlerRoutes = require("./modules/crawler/crawler.routes");
 const { statisticApi } = require("./app/statisticApi");
@@ -24,6 +26,34 @@ const start = async () => {
 		}
 
 		await fastify.listen({ port, host: "0.0.0.0" });
+
+		// Start Flask AI service
+		try {
+			const flaskPath = path.join(__dirname, 'ai', 'flask_app.py');
+			const flaskProcess = spawn('python', [flaskPath], {
+				cwd: __dirname,
+				stdio: ['pipe', 'pipe', 'pipe'],
+				detached: true
+			});
+
+			flaskProcess.stdout.on('data', (data) => {
+				fastify.log.info('Flask AI service: ' + data.toString().trim());
+			});
+
+			flaskProcess.stderr.on('data', (data) => {
+				fastify.log.warn('Flask AI service error: ' + data.toString().trim());
+			});
+
+			flaskProcess.on('close', (code) => {
+				fastify.log.warn('Flask AI service exited with code: ' + code);
+			});
+
+			// Store process reference for cleanup
+			global.flaskProcess = flaskProcess;
+			fastify.log.info('Flask AI service started');
+		} catch (e) {
+			fastify.log.error('Failed to start Flask AI service: ' + (e && e.message ? e.message : e));
+		}
 
 		// Register automation scheduler (daily cron) located in src/scheduler/crawler.js
 		// The scheduler is responsible for starting crawl jobs on the configured cron

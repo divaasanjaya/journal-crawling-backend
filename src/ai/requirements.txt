@@ -7,3 +7,4 @@ keybert
 umap-learn
 pymongo
 scikit-learn
+flask
