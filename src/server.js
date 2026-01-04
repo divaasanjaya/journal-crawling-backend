@@ -1,12 +1,14 @@
 const fastify = require("fastify")({ logger: true });
 const crawlerRoutes = require("./modules/crawler/crawler.routes");
 const { statisticApi } = require("./app/statisticApi");
+const { searchingApi } = require("./app/searchingApi");
 const { journalDetailApi } = require("./app/journalDetailApi");
 const { authorDetailApi } = require("./app/authorDetailApi");
 const { connect: connectDb, close: closeDb } = require('./db');
 
 fastify.register(crawlerRoutes, { prefix: "/" });
 fastify.register(statisticApi);
+fastify.register(searchingApi);
 fastify.register(journalDetailApi);
 fastify.register(authorDetailApi);
 

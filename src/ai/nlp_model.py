@@ -27,12 +27,35 @@ class JournalNLPModel:
             collection = db.journal
 
             # Fetch all journal documents
-            journals = list(collection.find({}, {"title": 1, "publicationYear": 1, "_id": 0}))
+            journals = list(collection.aggregate([
+                {
+                    "$project": {
+                        "id": { "$toString": "$_id" },
+                        "title": 1,
+                        "publicationYear": 1,
+                        "publicationName": 1,
+                        "citation": 1,
+                        "authors": 1,
+                        "text": 1,
+                        "_id": 0
+                    }
+                }
+            ]))
 
             # Convert to DataFrame
             self.df = pd.DataFrame(journals)
             self.df["text"] = self.df["title"].fillna("")
-            self.df = self.df[["title", "publicationYear", "text"]]
+            self.df = self.df[
+                [
+                    "id",
+                    "title",
+                    "publicationYear",
+                    "publicationName",
+                    "citation",
+                    "authors",
+                    "text"
+                ]
+            ]
 
             print(f"Loaded {len(self.df)} journal entries")
             return True
@@ -202,8 +225,14 @@ class JournalNLPModel:
         for i, score in zip(indices[0], scores[0]):
             if i < len(self.df):
                 results.append({
+                    "id": self.df.iloc[i]["id"],
                     "title": self.df.iloc[i]["title"],
-                    "year": int(self.df.iloc[i]["publicationYear"]) if pd.notna(self.df.iloc[i]["publicationYear"]) else None,
+                    "year": int(self.df.iloc[i]["publicationYear"])
+                            if pd.notna(self.df.iloc[i]["publicationYear"]) else None,
+                    "publicationName": self.df.iloc[i]["publicationName"],
+                    "citation": int(self.df.iloc[i]["citation"])
+                                if pd.notna(self.df.iloc[i]["citation"]) else None,
+                    "authors": self.df.iloc[i]["authors"],
                     "similarity_score": float(score)
                 })
 
