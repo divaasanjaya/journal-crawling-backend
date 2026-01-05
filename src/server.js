@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fastify = require("fastify")({ logger: true });
+const cors = require('@fastify/cors');
 const crawlerRoutes = require("./modules/crawler/crawler.routes");
 const { statisticApi } = require("./app/statisticApi");
 const { searchingApi } = require("./app/searchingApi");
@@ -16,7 +17,7 @@ fastify.register(authorDetailApi);
 
 const start = async () => {
 	try {
-		const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+		const port = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 		const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/journal_crawling';
 		// connect DB before starting server; if DB unavailable, log and continue
 		try {
@@ -24,6 +25,16 @@ const start = async () => {
 		} catch (e) {
 			fastify.log.warn('Database connection failed — continuing without DB: ' + (e && e.message ? e.message : e));
 		}
+
+		await fastify.register(cors, {
+			origin: [
+				'http://localhost:3000',
+				'http://localhost:3001',
+				'http://192.168.56.1:3000',
+				'http://192.168.56.1:3001',
+			],
+			methods: ['GET', 'POST'],
+		});
 
 		await fastify.listen({ port, host: "0.0.0.0" });
 
@@ -80,4 +91,3 @@ process.on('SIGINT', async () => {
 });
 
 start();
-
