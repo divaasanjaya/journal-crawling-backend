@@ -6,6 +6,7 @@ import time
 from pymongo import MongoClient
 import sys
 import random
+import os
 
 # --- CONFIG ---
 BASE = "https://sinta.kemdiktisaintek.go.id"
@@ -21,6 +22,16 @@ headers = {
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 col_journals = db[COLLECTION_NAME]
+
+def load_departments():
+    dept_file = os.path.join(os.path.dirname(__file__), 'department_list.txt')
+    with open(dept_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    # Remove { and }
+    content = content.strip().lstrip('{').rstrip('}')
+    # Split by lines and clean
+    depts = [line.strip().rstrip(',') for line in content.split('\n') if line.strip()]
+    return set(depts)
 
 def safe_request(url, max_retries=3):
     for attempt in range(max_retries):
@@ -51,38 +62,56 @@ def upsert_dosen(dosen):
             print(f"UPDATED: {dosen['nama']}")
 
 
-def get_all_author_urls(page_start=1, page_end=1):
+def get_all_author_urls(page_start=1, page_end=1, allowed_departments=None):
     author_urls = set()
     for page in range(page_start, page_end + 1):
         url = f"{AFFIL_AUTHORS_URL}?page={page}"
         try:
             res = safe_request(url)
             soup = BeautifulSoup(res.text, "html.parser")
-            links = soup.select('.au-item .profile-name a[href^="/authors/profile/"], .au-item .profile-name a[href^="https://sinta.kemdiktisaintek.go.id/authors/profile/"]')
-            if not links:
+            au_items = soup.select('.au-item')
+            if not au_items:
                 print(f"Page {page}: Tidak ada author ditemukan.")
                 continue
-            for a in links:
-                href = a["href"]
+            authors_found = 0
+            for item in au_items:
+                profile_name_a = item.select_one('.profile-name a[href^="/authors/profile/"], .profile-name a[href^="https://sinta.kemdiktisaintek.go.id/authors/profile/"]')
+                if not profile_name_a:
+                    continue
+                href = profile_name_a["href"]
                 if not href.startswith("http"):
                     href = BASE + href
+
+                # Extract department from the same au-item
+                dept_a = item.select_one('.profile-dept a')
+                department = dept_a.text.strip() if dept_a else ""
+
+                # Check if department is allowed
+                if allowed_departments and department not in allowed_departments:
+                    continue
+
                 author_urls.add(href)
-            print(f"Page {page}: {len(links)} authors found")
+                authors_found += 1
+            print(f"Page {page}: {authors_found} authors found (filtered)")
         except requests.exceptions.RequestException as e:
             print(f"Failed to fetch page {page}: {e}")
         time.sleep(random.uniform(2, 5))  # Random delay between 2-5 seconds
     return list(author_urls)
 
 def main():
+    # Load allowed departments
+    allowed_departments = load_departments()
+    print(f"Allowed departments: {allowed_departments}")
+
     # STEP 1: ambil semua author dari afiliasi Telkom University (dengan paginasi)
     # Contoh: ambil author dari page 1 sampai 5
     if len(sys.argv) >= 3:
         page_start = int(sys.argv[1])
         page_end = int(sys.argv[2])
     else:
-        page_start = 26
-        page_end = 35
-    author_urls = get_all_author_urls(page_start, page_end)
+        page_start = 1
+        page_end = 162
+    author_urls = get_all_author_urls(page_start, page_end, allowed_departments)
     print(f"Total author dari page {page_start} sampai {page_end}: {len(author_urls)}")
 
     # STEP 2: ambil data dosen
@@ -138,11 +167,26 @@ def main():
                             stats['hindex_gscholar'] = int(gscholar) if gscholar.isdigit() else 0
                             stats['hindex_wos'] = int(wos) if wos.isdigit() else 0
 
+            # Extract SINTA scores
+            sinta_overall = ""
+            sinta_3yr = ""
+            stat_profile = s.select_one('.stat-profile')
+            if stat_profile:
+                pr_nums = stat_profile.select('.pr-num')
+                pr_txts = stat_profile.select('.pr-txt')
+                for num, txt in zip(pr_nums, pr_txts):
+                    if "SINTA Score Overall" in txt.text:
+                        sinta_overall = num.text.strip()
+                    elif "SINTA Score 3Yr" in txt.text:
+                        sinta_3yr = num.text.strip()
+
             dosen_data = {
                 "nama": nama,
                 "affiliation": affiliation,
                 "department": department,
                 "sinta_id": sinta_id,
+                "sinta_score_overall": float(sinta_overall) if sinta_overall.replace('.', '').isdigit() else 0.0,
+                "sinta_score_3yr": float(sinta_3yr) if sinta_3yr.replace('.', '').isdigit() else 0.0,
                 "article_scopus": stats.get('article_scopus', 0),
                 "article_gscholar": stats.get('article_gscholar', 0),
                 "article_wos": stats.get('article_wos', 0),

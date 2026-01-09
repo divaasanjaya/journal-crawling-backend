@@ -37,7 +37,9 @@ async function authorDetailApi(fastify, opts) {
         citation: totalCitation,
         hindex_scopus: dosen.hindex_scopus,
         hindex_gscholar: dosen.hindex_gscholar,
-        hindex_wos: dosen.hindex_wos
+        hindex_wos: dosen.hindex_wos,
+        sinta_score_overall: dosen.sinta_score_overall,
+        sinta_score_3yr: dosen.sinta_score_3yr
       });
     } catch (error) {
       fastify.log.error('Error fetching author detail:', error.message || error);
