@@ -1,0 +1,19 @@
+{
+    Informatika (S1),
+    Sains Data (S1),
+    Informatika (Kampus Jakarta) (S1),
+    Informatika (Kampus Kota Surabaya) (S1),
+    PJJ Informatika (S1),
+    Rekayasa Perangkat Lunak (S1),
+    Rekayasa Perangkat Lunak (Kampus Kabupaten Banyumas) (S1),
+    Rekayasa Perangkat Lunak (Kampus Kota Surabaya) (S1),
+    Sains Data (Kampus Kabupaten Banyumas) (S1),
+    Sains Data (Kampus Kota Surabaya) (S1),
+    Teknik Informatika (Kampus Kabupaten Banyumas) (S1),
+    Teknologi Informasi (S1),
+    Teknologi Informasi (Kampus Jakarta) (S1),
+    Teknologi Informasi (Kampus Kota Surabaya) (S1),
+    Ilmu Forensik (S2),
+    Informatika (S2),
+    Informatika (S3)
+}
