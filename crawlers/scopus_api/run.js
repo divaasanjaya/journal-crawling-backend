@@ -51,6 +51,7 @@ async function run() {
   const { URL } = __require('url');
   const fs = __require('fs');
   const { MongoClient } = __require('mongodb');
+  const XLSX = __require('xlsx');
 
   // ===== ARGUMENT PARSER =====
   function parseArgs() {
@@ -98,15 +99,21 @@ async function run() {
   const results = [];
   console.error('DEBUG: mulai crawling Scopus');
 
-  const affil = opts.affil || opts.affiliation || '';
-  const startYear = parseInt(opts.startYear || '2019', 10);
-  const endYear = parseInt(opts.endYear || startYear, 10);
+  // Read Scopus IDs from Excel file
+  const workbook = XLSX.readFile('crawlers/scopus_api/scopus_id_list.xlsx');
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const jsonData = XLSX.utils.sheet_to_json(worksheet);
+  const scopusIds = jsonData.map(row => row['SCOPUS ID']).filter(id => id && id.toString().trim() !== '');
+
+  console.error(`DEBUG: found ${scopusIds.length} Scopus IDs to crawl`);
+
   const count = parseInt(opts.count || '25', 10);
   const maxStart = opts.maxStart ? parseInt(opts.maxStart, 10) : null;
   const startFrom = opts.start ? parseInt(opts.start, 10) : 0;
 
-  for (let y = startYear; y <= endYear; y++) {
-    const query = `AFFIL(${affil})`;
+  for (const scopusId of scopusIds) {
+    const query = `AU-ID(${scopusId})`;
     let start = startFrom;
     while (true) {
       if (maxStart !== null && start >= maxStart) break;
@@ -119,7 +126,7 @@ async function run() {
       let body;
       try {
         body = await fetchJson(url, headers);
-        console.error(`DEBUG: fetched ${url}`);
+        console.error(`DEBUG: fetched ${url} for AU-ID ${scopusId}`);
       } catch (err) {
         console.error('API request failed:', err.message);
         break;

@@ -21,6 +21,7 @@
     "google-spreadsheet": "^5.0.2",
     "mongodb": "^7.0.0",
     "mongoose": "^9.0.2",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "xlsx": "^0.18.5"
   }
 }
