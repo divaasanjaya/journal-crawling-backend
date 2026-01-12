@@ -13,10 +13,10 @@ async function exportToSpreadsheet(spreadsheetId) {
     const doc = await getSpreadsheet(spreadsheetId);
 
     await rebuildSheets(doc, journalDataByYear);
-    await sleep(1500);
+    await sleep(2500);
 
     await exportDosenData(doc, dosenData);
-    await sleep(1500);
+    await sleep(2500);
 
     await exportJournalData(doc, journalDataByYear);
 
@@ -46,7 +46,9 @@ async function fetchDosenData(db) {
       (d.citation_wos || 0),
     'H-Index GS': d.hindex_gscholar || 0,
     'H-Index Scopus': d.hindex_scopus || 0,
-    'H-Index WOS': d.hindex_wos || 0
+    'H-Index WOS': d.hindex_wos || 0,
+    'Sinta Score Overall': d.sinta_score_overall || 0,
+    'Sinta Score 3yr': d.sinta_score_3yr || 0
   }));
 }
 
@@ -86,7 +88,7 @@ async function rebuildSheets(doc, journalDataByYear) {
 
   // Rename sheet pertama jadi Data Author
   await baseSheet.updateProperties({ title: 'Data Author' });
-  await sleep(500);
+  await sleep(2500);
 
   // Clear isinya (AMAN karena akan pakai headerValues ulang)
   await baseSheet.clear();
@@ -99,15 +101,17 @@ async function rebuildSheets(doc, journalDataByYear) {
     'Total Citation',
     'H-Index GS',
     'H-Index Scopus',
-    'H-Index WOS'
+    'H-Index WOS',
+    'Sinta Score Overall',
+    'Sinta Score 3yr'
   ]);
 
-  await sleep(800);
+  await sleep(2500);
 
   // Hapus sheet lain (selain Data Author)
   for (const sheet of sheets.slice(1)) {
     await sheet.delete();
-    await sleep(600);
+    await sleep(2500);
   }
 
   // Buat sheet per tahun (langsung dengan header)
@@ -122,7 +126,7 @@ async function rebuildSheets(doc, journalDataByYear) {
         'Citation'
       ]
     });
-    await sleep(700);
+    await sleep(2500);
   }
 }
 
@@ -141,7 +145,7 @@ async function exportJournalData(doc, journalDataByYear) {
     const rows = journalDataByYear[year];
     if (rows.length) {
       await sheet.addRows(rows);
-      await sleep(700);
+      await sleep(2500);
     }
   }
 }
